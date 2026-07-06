@@ -1,0 +1,11 @@
+(fftw-3.3.11 fftw_wisdom #x4be12fff #x7b2df9b2 #xa5975329 #x385b0041
+  (fftw_codelet_r2cfII_20 2 #x31bff #x31bff #x0 #x76d3ef81 #x6d669c7c #xb7581032 #x83a30d86)
+  (fftw_codelet_r2cf_20 2 #x31bff #x31bff #x0 #x405576a9 #x014db82d #x390d5572 #x2f671523)
+  (fftw_codelet_r2cf_2 0 #x31bff #x31bff #x0 #xf58dce3a #x466f732c #x195841de #x4af1cda2)
+  (fftw_codelet_hf_12 0 #x31bff #x31bff #x0 #xdc021cc7 #x92bb6318 #xed8d8e54 #xf750a7bb)
+  (fftw_codelet_r2cf_12 0 #x31bff #x31bff #x0 #xfa7f447d #x3e410d3c #xef0370e9 #x4fda2a9a)
+  (fftw_codelet_r2cfII_12 0 #x31bff #x31bff #x0 #x7d447d22 #x62ce802f #x45e11ad2 #x89e45b71)
+  (fftw_rdft_vrank_geq1_register 0 #x31bff #x31bff #x0 #x17991f6a #xc811c76f #xea382dfa #xa27f90e4)
+  (fftw_codelet_hc2cf_20 0 #x31bff #x31bff #x0 #x882273a3 #x56a533d6 #xc6c3347e #xd190e241)
+  (fftw_rdft_vrank_geq1_register 0 #x31bff #x31bff #x0 #x346ab03b #x3c0f9088 #x70dc129f #x51c771c5)
+)
