@@ -1,0 +1,8 @@
+services:
+  subsnap:
+    build: .
+    volumes:
+      - /mnt/media:/media
+      - /opt/media/subsnap:/app/data
+    environment:
+      - DB_PATH=/app/data/subsnap.db
