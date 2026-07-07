@@ -1,8 +1,12 @@
 services:
   subsnap:
-    build: .
+    image: ghcr.io/rs-jensen/subsnap:latest  
+    restart: always
     volumes:
-      - /mnt/media:/media
-      - /opt/media/subsnap:/app/data
+      - ./data:/data
+      - /path/to/movies:/media/movies      
+      - /path/to/series:/media/series       
     environment:
-      - DB_PATH=/app/data/subsnap.db
+      - MEDIA_ROOT=/media
+      - DB_PATH=/data/subsnap.db
+      - SUBSNAP_BIN=/app/subsnap

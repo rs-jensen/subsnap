@@ -1,58 +1,79 @@
 # subsnap
 
-**v1.0 — don't use this in production yet.** The current sync detection uses raw RMS energy which is pretty naive and often wrong. Plan is to replace it with FFT-based VAD (voice activity detection) filtering to 300-3400Hz so it can actually tell the difference between someone talking and an explosion. That's v2.
+Automatically fixes subtitle sync in your media library. Detects how far off your subtitles are from the video and corrects them, including linear drift caused by framerate mismatches.
+
+Built in C++ with FFmpeg for audio decoding and Python for orchestration. Stores what it has already processed in SQLite so it does not touch the same file twice.
 
 ---
 
-subsnap is a CLI tool that figures out how far off your subtitle file is from your video and tells you the offset in milliseconds. Built in C++ with FFmpeg for audio decoding and Python for orchestration and SQLite tracking.
-
 ## how it works
 
-1. Decodes the audio from your video file
-2. Calculates RMS energy in 10ms windows to build an audio activity profile
+1. Decodes audio from the video file
+2. Runs voice activity detection (VAD) to build a speech activity profile
 3. Parses the SRT file and builds a dialogue activity profile from the timestamps
-4. Cross-correlates the two profiles to find the best matching offset
-5. Prints the offset in ms
+4. Cross-correlates the two profiles across multiple segments of the film to detect both constant offset and linear drift
+5. Fits a line through the results and applies the correction to the SRT file
+6. Keeps a .bak of the original just in case
 
-Right now subsnap only detects the offset — it does not modify the SRT file yet. That's coming in v2.
+---
 
-## usage
+## setup
 
-```bash
-./subsnap video.mp4 subtitles.srt
+### docker (recommended)
+
+Copy the compose snippet and point it at your media:
+
+```yaml
+services:
+  subsnap:
+    image: ghcr.io/rs-jensen/subsnap:latest
+    restart: always
+    volumes:
+      - ./data:/data
+      - /your/movies:/media/movies
+      - /your/series:/media/series
+    environment:
+      - MEDIA_ROOT=/media
+      - DB_PATH=/data/subsnap.db
 ```
 
-Or run the Python orchestrator which scans your media library, runs subsnap on each video/subtitle pair, and stores results in SQLite:
+```bash
+docker compose up -d
+```
+
+It will scan your library on startup, fix what it finds, then keep watching for new files.
+
+### manual
+
+Build the C++ binary:
+
+```bash
+g++ -o subsnap main.cpp decoder.cpp srt_parser.cpp correlate.cpp \
+    $(pkg-config --cflags --libs libavformat libavcodec libavutil libswresample)
+```
+
+Install Python dependencies:
+
+```bash
+pip install numpy watchdog
+```
+
+Run:
 
 ```bash
 python3 main.py
 ```
 
-## docker
+Or run subsnap directly on a single file:
 
 ```bash
-docker compose up
+./subsnap video.mp4 subtitles.srt
 ```
 
-Mount your media directory in `docker-compose.yml`:
+---
 
-```yaml
-volumes:
-  - /your/media:/media
-```
+## notes
 
-## building
+subsnap matches video files to SRT files by filename similarity so it handles the usual naming chaos from scene releases reasonably well. If you have a very unusual setup it might match the wrong files, worth checking the first run.
 
-```bash
-g++ -o subsnap main.cpp decoder.cpp srt_parser.cpp correlate.cpp \
-    $(pkg-config --cflags --libs libavformat libavcodec libavutil libswresample) \
-    -lfftw3
-```
-
-## what's broken / what's next
-
-- RMS-based sync detection works okay for clean audio but gets confused by music and sound effects
-- v2 will use FFTW3 to filter to the speech frequency range (300-3400Hz) before correlation
-- v2 will actually apply the offset and write a corrected SRT file
-- v2 will watch for new files and automatically process them, with SQLite tracking what's already been fixed
-- No drift correction yet (for when video and subtitles have different framerates)
+The original SRT is always backed up as `.srt.bak` before anything is changed.
