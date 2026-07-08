@@ -55,7 +55,7 @@ g++ -o subsnap main.cpp decoder.cpp srt_parser.cpp correlate.cpp \
 Install Python dependencies:
 
 ```bash
-pip install numpy watchdog
+pip install watchdog
 ```
 
 Run:
@@ -64,11 +64,13 @@ Run:
 python3 main.py
 ```
 
-Or run subsnap directly on a single file:
+Or run subsnap directly to see what offset it detects:
 
 ```bash
 ./subsnap video.mp4 subtitles.srt
 ```
+
+This only prints the detected offset — it does not modify anything. Run `main.py` to actually correct the file.
 
 ---
 
@@ -77,3 +79,13 @@ Or run subsnap directly on a single file:
 subsnap matches video files to SRT files by filename similarity so it handles the usual naming chaos from scene releases reasonably well. If you have a very unusual setup it might match the wrong files, worth checking the first run.
 
 The original SRT is always backed up as `.srt.bak` before anything is changed.
+
+## supported formats
+
+**Video:** `.mp4`, `.mkv`, `.avi`
+
+**Subtitles:** `.srt`
+
+Planned additions:
+- Video: `.mov`, `.m4v`, `.wmv`, `.flv`, `.webm`, `.ts`
+- Subtitles: `.ass`/`.ssa` (Advanced SubStation Alpha), `.vtt` (WebVTT), `.sub` (MicroDVD)

@@ -23,14 +23,11 @@ int main(int argc, const char *argv[]) {
 
     std::vector<std::pair<int, int>> timestamps = read_srt(argv[2]);
     std::vector<int> activity_variable = activity(timestamps);
-    auto [offset, confidence] = cross_correlation(activity_variable, fvad);
+    auto [slope, intercept, confidence] = cross_correlation(activity_variable, fvad);
 
     
     //for (int i = 0; i < 10; ++i)
     //    std::cout << "RMS[" << i << "]: " << RMS[i] << " activity[" << i << "]: " << activity_variable[i] << '\n';
-
-    std::cout << "Offset in ms: " << offset << '\n';
-    std::cout << "Confidence is; " << confidence << '\n';
 
     std::cout << "Samples: " << decoded.size() << '\n';
     std::cout << "Sample rate: " << OAD->sample_rate << '\n';

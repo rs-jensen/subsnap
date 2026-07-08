@@ -3,7 +3,6 @@ import sqlite3
 import subprocess
 import shutil
 import time
-import numpy as np
 from pathlib import Path
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
@@ -11,7 +10,6 @@ from watchdog.events import FileSystemEventHandler
 DB_PATH    = os.environ.get("DB_PATH", "subsnap.db")
 MEDIA_ROOT = os.environ.get("MEDIA_ROOT", "/media")
 SUBSNAP    = os.environ.get("SUBSNAP_BIN", "./subsnap")
-CHUNK_DUR  = 900
 VIDEO_EXTS = ('.mp4', '.mkv', '.avi')
 
 
@@ -56,7 +54,7 @@ def find_pairs(path):
         for filename in files:
             full_path = os.path.join(root, filename)
             base = os.path.splitext(filename)[0]
-            if filename.lower().endswith(VIDEO_EXTS):
+            if filename.lower().endswith(VIDEO_EXTS) and not filename.startswith("._"):
                 videos.append((base, full_path))
             elif filename.lower().endswith('.srt'):
                 subtitles.append((base, full_path))
@@ -94,32 +92,16 @@ def run_sync(video_path, srt_path):
         check=True
     )
 
-    chunks = {}
-    current = None
+    slope, intercept = None, None
     for line in result.stdout.splitlines():
-        if line.startswith("t_"):
-            parts = line.split()
-            current = int(parts[0][2:])
-            chunks[current] = {"offset": int(parts[1])}
-        elif line.startswith("Activity") and current is not None:
-            chunks[current]["activity"] = float(line.split()[-1])
-        elif line.startswith("Sharpness") and current is not None:
-            chunks[current]["sharpness"] = float(line.split()[-1])
+        if line.startswith("Slope:"):
+            slope = float(line.split()[1])
+        elif line.startswith("Intercept:"):
+            intercept = float(line.split()[1])
 
-    t_vals, delta_vals, weights = [], [], []
-    for n, data in chunks.items():
-        sharpness = data.get("sharpness", 0)
-        if sharpness < 1.01:
-            continue
-        t_vals.append((n - 0.5) * CHUNK_DUR)
-        delta_vals.append(data["offset"] / 1000.0)
-        weights.append(sharpness)
+    if slope is None or intercept is None:
+        raise RuntimeError("Could not parse slope/intercept from subsnap output")
 
-    if len(t_vals) < 2:
-        raise RuntimeError("Not enough reliable chunks")
-
-    slope, intercept = np.polyfit(t_vals, delta_vals, 1, w=weights)
-    print(f"Slope: {slope:.6f}  Intercept: {intercept:.3f}s")
     return slope, intercept
 
 
@@ -164,6 +146,8 @@ def process(conn, video_path, srt_path):
         save_result(conn, video_path, srt_path, None, None, None, status="failed")
 
 
+_last_processed = {}
+
 class MediaHandler(FileSystemEventHandler):
     def __init__(self, conn):
         self.conn = conn
@@ -171,10 +155,18 @@ class MediaHandler(FileSystemEventHandler):
     def on_created(self, event):
         if event.is_directory:
             return
+        if event.src_path.endswith(('.srt', '.bak')):
+            return
+        now = time.time()
+        if _last_processed.get(event.src_path, 0) > now - 60:
+            return
+        _last_processed[event.src_path] = now
         time.sleep(5)
+        conn = sqlite3.connect(DB_PATH)
         pairs = find_pairs(os.path.dirname(event.src_path))
         for video, srt in pairs:
-            process(self.conn, video, srt)
+            process(conn, video, srt)
+        conn.close()
 
 
 def main():
