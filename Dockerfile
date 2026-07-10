@@ -12,8 +12,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip3 install -r requirements.txt --break-system-packages
 
-COPY src/ ./src/
-RUN g++ -O2 -o subsnap src/correlate.cpp src/decoder.cpp src/srt_parser.cpp \
+COPY correlate.cpp correlate.h decoder.cpp decoder.h srt_parser.cpp srt_parser.h main.cpp .
+RUN g++ -O2 -o subsnap main.cpp correlate.cpp decoder.cpp srt_parser.cpp \
     $(pkg-config --cflags --libs libavcodec libavformat libavutil libswresample)
 
 COPY main.py shift_srt.py .
