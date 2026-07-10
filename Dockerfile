@@ -4,9 +4,19 @@ RUN apt-get update && apt-get install -y \
     python3 python3-pip \
     ffmpeg \
     libavcodec-dev libavformat-dev libavutil-dev libswresample-dev \
-    libfvad-dev \
     g++ pkg-config \
+    git automake autoconf libtool \
     && rm -rf /var/lib/apt/lists/*
+
+# Byg libfvad fra source
+RUN git clone https://github.com/dpirch/libfvad.git /tmp/libfvad && \
+    cd /tmp/libfvad && \
+    autoreconf -i && \
+    ./configure && \
+    make && \
+    make install && \
+    ldconfig && \
+    rm -rf /tmp/libfvad
 
 WORKDIR /app
 
