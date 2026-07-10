@@ -4,6 +4,7 @@
 #include <cmath>
 #include "decoder.h"
 #include "srt_parser.h"
+#include <algorithm>
 #include "correlate.h"
 
 int main(int argc, const char *argv[]) {
