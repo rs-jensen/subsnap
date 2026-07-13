@@ -72,7 +72,13 @@ std::vector<float> decode_audio(AVFormatContext* pFormatContext, AVCodecContext*
     std::vector<float> decoded = {};
 
     if (!packet || !frame) {
-        std::cerr << "Cloud not allocate frame or packet" << '\n';
+        std::cerr << "Could not allocate frame or packet" << '\n';
+        return {};
+    }
+
+    if (dec_ctx->sample_fmt != AV_SAMPLE_FMT_FLTP) {
+        std::cerr << "Unsupported sample format: " 
+                  << av_get_sample_fmt_name(dec_ctx->sample_fmt) << '\n';
         return {};
     }
 
@@ -91,7 +97,7 @@ std::vector<float> decode_audio(AVFormatContext* pFormatContext, AVCodecContext*
                 std::cerr << "Error while sending a packet to the decoder" << '\n';
                 return decoded;
             }
-            // This loop is so we can get the decoded frames. The loop is cause i tested without and i didnt work so a packet can have multiple frames-
+            // This loop is so we can get the decoded frames. The loop is because i tested without and it didnt work so a packet can have multiple frames
             while (ret >= 0) {
                 // Retrieves one decoded frame "EAGAIN" basically means not ready yet send more packages.
                 ret = avcodec_receive_frame(dec_ctx, frame);
@@ -114,12 +120,20 @@ std::vector<float> decode_audio(AVFormatContext* pFormatContext, AVCodecContext*
     return decoded; 
 }
 
-std::vector<float> calculate_fvad(const std::vector<float>& decoded, int sample_rate) {
-    std::vector<float> result = {};
-    std::vector<int16_t> pcm(decoded.size());
+std::vector<int16_t> convert_to_8kHz(std::vector<float> decoded, AVCodecContext* dec_ctx) {
+    int ratio = dec_ctx->sample_rate / 8000;
+    std::vector<int16_t> output;
+    output.reserve(decoded.size() / ratio);
+    
+    // Take every nth sample to go from original rate to 8kHz
+    for (size_t i = 0; i < decoded.size(); i += ratio) {
+        output.push_back((int16_t)(decoded[i] * 32767.0f));
+    }
+    return output;
+}
 
-    for (int i = 0; i < decoded.size(); ++i)
-        pcm[i] = (int16_t)(decoded[i] * 32767);
+std::vector<float> calculate_fvad(const std::vector<int16_t>& pcm, int sample_rate) {
+    std::vector<float> result = {};
 
     Fvad *vad = fvad_new();
     fvad_set_mode(vad, 0);
@@ -135,6 +149,95 @@ std::vector<float> calculate_fvad(const std::vector<float>& decoded, int sample_
     return result;
 }
 
+
+// This function below i just couldnt figure out how to make it work
+//Used the one above instead think its almost as good just not perfect sound wise but functional  
+// Pls help or i need to look at it later!!!
+/*
+// Takes decoded float samples and squishes them down to 8kHz int16
+// libfvad only needs 8k since speech sits under 4kHz anyway
+std::vector<int16_t> convert_to_8kHz(const std::vector<float>& decoded, AVCodecContext* dec_ctx) {
+    SwrContext* swr_ctx = nullptr;
+
+    // Build the mono layouts the safe way. The AV_CHANNEL_LAYOUT_MONO macro
+    // makes a struct that swr_convert later rejects, so we let ffmpeg fill it
+    AVChannelLayout mono_in;
+    AVChannelLayout mono_out;
+    av_channel_layout_from_mask(&mono_in, AV_CH_LAYOUT_MONO);
+    av_channel_layout_from_mask(&mono_out, AV_CH_LAYOUT_MONO);
+
+    // input is mono float at movie rate, output is mono int16 at 8kHz
+    int ret = swr_alloc_set_opts2(
+        &swr_ctx,
+        &mono_out,
+        AV_SAMPLE_FMT_S16,
+        8000,
+        &mono_in,
+        AV_SAMPLE_FMT_FLT,
+        dec_ctx->sample_rate,
+        0,
+        NULL
+    );
+    if (ret < 0 || !swr_ctx) {
+        std::cerr << "Could not set up resampler" << '\n';
+        return {};
+    }
+
+    if (swr_init(swr_ctx) < 0) {
+        std::cerr << "Could not init resampler" << '\n';
+        swr_free(&swr_ctx);
+        return {};
+    }
+
+    // Figure out how many samples we get out and grab the memory up front
+    // so we dont reallocate mid conversion
+    int64_t out_count = (int64_t)decoded.size() * 8000 / dec_ctx->sample_rate + 256;
+    std::vector<int16_t> output(out_count);
+
+    const uint8_t* in_ptr  = (const uint8_t*)decoded.data();
+    uint8_t*       out_ptr = (uint8_t*)output.data();
+
+    std::cout << "in samples: " << decoded.size() << " out_count: " << out_count << " in_rate: " << dec_ctx->sample_rate << '\n';
+
+    // do the actual resample in one go
+    int samples_out = swr_convert(swr_ctx, &out_ptr, (int)out_count, &in_ptr, (int)decoded.size());
+    if (samples_out < 0) {
+        char errbuf[128];
+        av_strerror(samples_out, errbuf, sizeof(errbuf));
+        std::cerr << "Error during resampling: " << errbuf << '\n';
+        swr_free(&swr_ctx);
+        return {};
+    }
+
+    // flush whatever the resampler still has buffered internally
+    out_ptr = (uint8_t*)(output.data() + samples_out);
+    int flushed = swr_convert(swr_ctx, &out_ptr, (int)(out_count - samples_out), NULL, 0);
+
+    av_channel_layout_uninit(&mono_in);
+    av_channel_layout_uninit(&mono_out);
+    swr_free(&swr_ctx);
+
+    output.resize(samples_out + flushed);
+    return output;
+}
+
+std::vector<float> calculate_fvad(const std::vector<int16_t>& pcm, int sample_rate) {
+    std::vector<float> result = {};
+
+    Fvad *vad = fvad_new();
+    fvad_set_mode(vad, 0);
+    fvad_set_sample_rate(vad, sample_rate);
+
+    int frame_size = sample_rate / 100; // 10ms
+    for (int i = 0; i + frame_size <= (int)pcm.size(); i += frame_size) {
+        int r = fvad_process(vad, pcm.data() + i, frame_size);
+        result.push_back(r == 1 ? 1.0f : 0.0f);
+    }
+
+    fvad_free(vad);
+    return result;
+}
+*/
 
 
 // use fvad instead i think

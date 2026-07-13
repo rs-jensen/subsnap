@@ -157,13 +157,16 @@ class MediaHandler(FileSystemEventHandler):
             return
         if event.src_path.endswith(('.srt', '.bak')):
             return
+        
+        directory = os.path.dirname(event.src_path)
         now = time.time()
-        if _last_processed.get(event.src_path, 0) > now - 60:
+        if _last_processed.get(directory, 0) > now - 60:
             return
-        _last_processed[event.src_path] = now
+        _last_processed[directory] = now
+        
         time.sleep(5)
         conn = sqlite3.connect(DB_PATH)
-        pairs = find_pairs(os.path.dirname(event.src_path))
+        pairs = find_pairs(directory)
         for video, srt in pairs:
             process(conn, video, srt)
         conn.close()

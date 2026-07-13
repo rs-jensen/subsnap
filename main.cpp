@@ -15,32 +15,29 @@ int main(int argc, const char *argv[]) {
     AVFormatContext* AVC = open_file(argv[1]);
     int audio_stream_index = find_audio_stream(AVC);
     AVCodecContext* OAD = open_audio_decoder(AVC, audio_stream_index);
+    std::cout << "Sample fmt: " << OAD->sample_fmt << '\n';
+    std::cout << "Channels: " << OAD->ch_layout.nb_channels << '\n';
     std::vector<float> decoded = decode_audio(AVC, OAD, audio_stream_index);
-    std::vector<float> fvad = calculate_fvad(decoded, OAD->sample_rate);
-    float max_val = *std::max_element(fvad.begin(), fvad.end());
-
-    //for (int i = 351000; i < 352000; ++i)
-    //    std::cout << "FFT[" << i << "]: " << FFT[i] << '\n';
+    std::vector<int16_t> pcm = convert_to_8kHz(decoded, OAD);
+    std::cout << "pcm.size(): " << pcm.size() << '\n';
+    std::cout << "expected: " << decoded.size() / 6 << '\n'; // 48000/8000 = 6
+    std::cout << "first samples: ";
+    for (int i = 0; i < 10; ++i)
+        std::cout << pcm[i] << " ";
+    std::cout << '\n';
+    std::vector<float> fvad = calculate_fvad(pcm, 8000);
 
     std::vector<std::pair<int, int>> timestamps = read_srt(argv[2]);
     std::vector<int> activity_variable = activity(timestamps);
-    auto [slope, intercept, confidence] = cross_correlation(activity_variable, fvad);
-
-    
-    //for (int i = 0; i < 10; ++i)
-    //    std::cout << "RMS[" << i << "]: " << RMS[i] << " activity[" << i << "]: " << activity_variable[i] << '\n';
+    std::vector<int> fvad_int(fvad.begin(), fvad.end());
+    auto [slope, intercept] = fft_crosscorrelate(fvad_int, activity_variable);
 
     std::cout << "Samples: " << decoded.size() << '\n';
     std::cout << "Sample rate: " << OAD->sample_rate << '\n';
-    std::cout << "RMS.size(): " << fvad.size() << '\n';
+    std::cout << "fvad.size(): " << fvad.size() << '\n';
     std::cout << "activity_variable.size: " << activity_variable.size() << '\n';
     std::cout << "Timestamps size: " << timestamps.size() << '\n';
     std::cout << "Endtime: " << timestamps.back().second << '\n';
-    /*
-    for (int i = 0; i < 10; ++i) {
-        int j = timestamps[i];
-        std::cout << "Timestamp: " << j << '\n';
-    }
-    */
+
     return 0;
 }
