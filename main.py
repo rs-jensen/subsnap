@@ -47,34 +47,38 @@ def normalize(name):
 
 
 def find_pairs(path):
-    videos = []
-    subtitles = []
+    pairs = []
 
     for root, dirs, files in os.walk(path):
+        videos = []
+        srts = []
+
         for filename in files:
+            if filename.startswith("._"):
+                continue
             full_path = os.path.join(root, filename)
             base = os.path.splitext(filename)[0]
-            if filename.lower().endswith(VIDEO_EXTS) and not filename.startswith("._"):
+
+            if filename.lower().endswith(VIDEO_EXTS):
                 videos.append((base, full_path))
             elif filename.lower().endswith('.srt'):
-                subtitles.append((base, full_path))
+                srts.append((base, full_path))
 
-    pairs = []
-    for vbase, vpath in videos:
-        best, best_score = None, 0
-        for sbase, spath in subtitles:
-            score = len(normalize(vbase) & normalize(sbase))
-            if score > best_score:
-                best_score = score
-                best = spath
-        if best and best_score >= 3:
-            print(f"Matched: {vpath} -> {best}")
-            pairs.append((vpath, best))
-        else:
-            print(f"No srt match for: {vpath}")
+        for vbase, vpath in videos:
+            best, best_score = None, 0
+            for sbase, spath in srts:
+                score = len(normalize(vbase) & normalize(sbase))
+                if score > best_score:
+                    best_score = score
+                    best = spath
+
+            if best and best_score >= 3:
+                print(f"Matched: {vpath} -> {best}")
+                pairs.append((vpath, best))
+            else:
+                print(f"No srt match for: {vpath}")
 
     return pairs
-
 
 def already_processed(conn, video_path, srt_path):
     cur = conn.execute(
