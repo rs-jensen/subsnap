@@ -1,11 +1,15 @@
 services:
   subsnap:
-    image: ghcr.io/rs-jensen/subsnap:latest  
+    container_name: subsnap
+    image: ghcr.io/rs-jensen/subsnap:latest
     restart: always
+    ulimits:
+      core: 0
+    tmpfs:
+      - /tmp
     volumes:
       - ./data:/data
-      - /path/to/movies:/media/movies      
-      - /path/to/series:/media/series       
+      - /mnt/media:/media
     environment:
       - MEDIA_ROOT=/media
       - DB_PATH=/data/subsnap.db

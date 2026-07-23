@@ -1,27 +1,55 @@
 # subsnap
 
-Automatically fixes subtitle sync in your media library. Detects how far off your subtitles are from the video and corrects them, including linear drift caused by framerate mismatches.
+Automatically fixes subtitle sync in your media library. Detects how far off your subtitles are and corrects them, including linear drift caused by framerate mismatches between the video and the subtitle file.
 
-Built in C++ with FFmpeg for audio decoding and Python for orchestration. Stores what it has already processed in SQLite so it does not touch the same file twice.
+Built in C++ using FFmpeg for audio decoding, libfvad for voice activity detection, and FFTW3 for fast cross-correlation. Python handles orchestration, file watching, and state tracking via SQLite so the same file is never processed twice.
 
 ---
 
 ## how it works
 
-1. Decodes audio from the video file
-2. Runs voice activity detection (VAD) to build a speech activity profile
-3. Parses the SRT file and builds a dialogue activity profile from the timestamps
-4. Cross-correlates the two profiles across multiple segments of the film to detect both constant offset and linear drift
-5. Fits a line through the results and applies the correction to the SRT file
-6. Keeps a .bak of the original just in case
+1. Decodes audio from the video file using FFmpeg
+2. Runs WebRTC voice activity detection to build a speech activity profile at 8kHz
+3. Parses the SRT file and builds a matching dialogue activity profile from the timestamps
+4. Cross-correlates the two profiles across 15 minute chunks using FFT, which finds the offset for each chunk in O(N log N) instead of the naive O(N²)
+5. Fits a line through the per-chunk offsets using weighted linear regression to find both the constant offset and any linear drift
+6. Applies the correction to the SRT file and keeps a .srt.bak of the original
 
 ---
 
-## setup
+## repo structure
 
-### docker (recommended)
+subsnap/
+├── engine/       C++ source for the CLI binary
+├── docker/       Python orchestrator, Dockerfile, compose file
+└── .github/      CI workflows for Docker image and binary releases
 
-Copy the compose snippet and point it at your media:
+---
+
+## usage
+
+### cli
+
+Build the binary:
+
+```bash
+cd engine
+g++ -O2 -o subsnap main.cpp correlate.cpp decoder.cpp srt_parser.cpp \
+    $(pkg-config --cflags --libs libavcodec libavformat libavutil libswresample) \
+    -lfvad -lfftw3
+```
+
+Run it on a single file:
+
+```bash
+./subsnap video.mkv subtitles.srt
+```
+
+This decodes the audio, runs VAD, finds the offset and drift, corrects the SRT file in place, and prints the result. No Python required.
+
+### docker
+
+The Docker image includes the C++ binary and the Python file watcher. Point it at your media and it will scan on startup then watch for new files.
 
 ```yaml
 services:
@@ -30,55 +58,20 @@ services:
     restart: always
     volumes:
       - ./data:/data
-      - /your/movies:/media/movies
-      - /your/series:/media/series
+      - /your/media:/media
     environment:
       - MEDIA_ROOT=/media
       - DB_PATH=/data/subsnap.db
+      - SUBSNAP_BIN=/app/subsnap
 ```
 
 ```bash
 docker compose up -d
 ```
 
-It will scan your library on startup, fix what it finds, then keep watching for new files.
-
-### manual
-
-Build the C++ binary:
-
-```bash
-g++ -o subsnap main.cpp decoder.cpp srt_parser.cpp correlate.cpp \
-    $(pkg-config --cflags --libs libavformat libavcodec libavutil libswresample)
-```
-
-Install Python dependencies:
-
-```bash
-pip install watchdog
-```
-
-Run:
-
-```bash
-python3 main.py
-```
-
-Or run subsnap directly to see what offset it detects:
-
-```bash
-./subsnap video.mp4 subtitles.srt
-```
-
-This only prints the detected offset — it does not modify anything. Run `main.py` to actually correct the file.
+Subsnap matches video files to SRT files by filename similarity within the same directory. It handles the usual naming differences from scene releases reasonably well. The first run is worth watching with `docker compose logs -f subsnap` to make sure matches look correct.
 
 ---
-
-## notes
-
-subsnap matches video files to SRT files by filename similarity so it handles the usual naming chaos from scene releases reasonably well. If you have a very unusual setup it might match the wrong files, worth checking the first run.
-
-The original SRT is always backed up as `.srt.bak` before anything is changed.
 
 ## supported formats
 
@@ -86,6 +79,6 @@ The original SRT is always backed up as `.srt.bak` before anything is changed.
 
 **Subtitles:** `.srt`
 
-Planned additions:
-- Video: `.mov`, `.m4v`, `.wmv`, `.flv`, `.webm`, `.ts`
-- Subtitles: `.ass`/`.ssa` (Advanced SubStation Alpha), `.vtt` (WebVTT), `.sub` (MicroDVD)
+Planned:
+- `.ass` / `.ssa`
+- `.vtt`

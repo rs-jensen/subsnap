@@ -120,7 +120,7 @@ std::vector<float> decode_audio(AVFormatContext* pFormatContext, AVCodecContext*
     return decoded; 
 }
 
-std::vector<int16_t> convert_to_8kHz(std::vector<float> decoded, AVCodecContext* dec_ctx) {
+std::vector<int16_t> convert_to_8kHz(std::vector<float>& decoded, AVCodecContext* dec_ctx) {
     int ratio = dec_ctx->sample_rate / 8000;
     std::vector<int16_t> output;
     output.reserve(decoded.size() / ratio);

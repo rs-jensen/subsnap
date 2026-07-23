@@ -89,36 +89,19 @@ def already_processed(conn, video_path, srt_path):
 
 
 def run_sync(video_path, srt_path):
+    srt = Path(srt_path)
+    backup_path = srt.with_suffix(".srt.bak")
+    shutil.copy2(srt, backup_path)
+
     result = subprocess.run(
         [SUBSNAP, video_path, srt_path],
         capture_output=True,
         text=True,
         check=True
     )
-
-    slope, intercept = None, None
-    for line in result.stdout.splitlines():
-        if line.startswith("Slope:"):
-            slope = float(line.split()[1])
-        elif line.startswith("Intercept:"):
-            intercept = float(line.split()[1])
-
-    if slope is None or intercept is None:
-        raise RuntimeError("Could not parse slope/intercept from subsnap output")
-
-    return slope, intercept
-
-
-def backup_and_shift_srt(srt_path, slope, intercept):
-    srt = Path(srt_path)
-    backup_path = srt.with_suffix(".srt.bak")
-    shutil.copy2(srt, backup_path)
-
-    subprocess.run(
-        ["python3", "shift_srt.py", str(srt), str(srt), str(-slope), str(-intercept)],
-        check=True
-    )
+    print(result.stdout.strip())
     return str(backup_path)
+
 
 
 def save_result(conn, video_path, srt_path, backup_path, slope, intercept, status="done"):
@@ -141,16 +124,14 @@ def process(conn, video_path, srt_path):
 
     print(f"Processing: {video_path}")
     try:
-        slope, intercept = run_sync(video_path, srt_path)
-        backup_path = backup_and_shift_srt(srt_path, slope, intercept)
-        save_result(conn, video_path, srt_path, backup_path, slope, intercept)
-        print(f"Done: {video_path}")
+        backup_path = run_sync(video_path, srt_path)
+        save_result(conn, video_path, srt_path, backup_path, None, None)
     except Exception as e:
         print(f"Failed: {video_path} -> {e}")
         save_result(conn, video_path, srt_path, None, None, None, status="failed")
 
 
-_last_processed = {}
+
 
 class MediaHandler(FileSystemEventHandler):
     def __init__(self, conn):
